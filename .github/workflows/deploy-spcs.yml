@@ -6,7 +6,6 @@ on:
 env:
   REGISTRY: sfsenorthamerica-jptelco-aws1.registry.snowflakecomputing.com
   IMAGE_PATH: /telecom_cx/data/telecom_cx_repo/snowcx-react
-  SNOWFLAKE_ACCOUNT: sfsenorthamerica-jptelco_aws1
 
 jobs:
   build-and-push:
@@ -26,11 +25,11 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Generate JWT and login to registry
+      - name: Login to Snowflake registry
         run: |
           pip install pyjwt cryptography
           python3 - <<'PYEOF'
-          import jwt, time, hashlib, base64, os
+          import jwt, time, hashlib, base64, os, subprocess
           from cryptography.hazmat.primitives import serialization
 
           key_pem = os.environ["SNOWFLAKE_PRIVATE_KEY"]
@@ -50,16 +49,21 @@ jobs:
               private_key, algorithm="RS256"
           )
 
-          with open("/tmp/sf_token", "w") as f:
-              f.write(token)
+          registry = os.environ["SF_REGISTRY"]
+          result = subprocess.run(
+              ["docker", "login", registry, "-u", "0sessiontoken", "--password", token],
+              capture_output=True, text=True
+          )
+          print(result.stdout)
+          if result.returncode != 0:
+              print(f"Login failed: {result.stderr}")
+              exit(1)
           PYEOF
-
-          cat /tmp/sf_token | docker login ${{ env.REGISTRY }} -u 0sessiontoken --password-stdin
-          rm -f /tmp/sf_token
         env:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
           SF_ACCOUNT_LOCATOR: ${{ secrets.SF_ACCOUNT_LOCATOR }}
           SF_USER: ${{ secrets.SF_USER }}
+          SF_REGISTRY: ${{ env.REGISTRY }}
 
       - name: Build Docker image
         run: |
