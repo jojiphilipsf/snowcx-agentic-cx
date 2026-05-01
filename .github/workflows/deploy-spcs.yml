@@ -26,8 +26,7 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Generate JWT for registry login
-        id: jwt
+      - name: Generate JWT and login to registry
         run: |
           pip install pyjwt cryptography
           python3 - <<'PYEOF'
@@ -51,17 +50,16 @@ jobs:
               private_key, algorithm="RS256"
           )
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"token={token}\n")
+          with open("/tmp/sf_token", "w") as f:
+              f.write(token)
           PYEOF
+
+          cat /tmp/sf_token | docker login ${{ env.REGISTRY }} -u 0sessiontoken --password-stdin
+          rm -f /tmp/sf_token
         env:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
           SF_ACCOUNT_LOCATOR: ${{ secrets.SF_ACCOUNT_LOCATOR }}
           SF_USER: ${{ secrets.SF_USER }}
-
-      - name: Login to Snowflake registry
-        run: |
-          echo "${{ steps.jwt.outputs.token }}" | docker login ${{ env.REGISTRY }} -u 0sessiontoken --password-stdin
 
       - name: Build Docker image
         run: |
