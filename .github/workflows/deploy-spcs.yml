@@ -25,40 +25,33 @@ jobs:
       - name: Build Next.js
         run: npm run build
 
-      - name: Install Snowflake CLI and login to registry
-        run: |
-          pip install snowflake-cli-labs snowflake-connector-python cryptography
-          mkdir -p ~/.snowflake
-          python3 - <<'PYEOF'
-          import os
-          key_pem = os.environ["SNOWFLAKE_PRIVATE_KEY"]
-          with open(os.path.expanduser("~/.snowflake/key.p8"), "w") as f:
-              f.write(key_pem)
-          os.chmod(os.path.expanduser("~/.snowflake/key.p8"), 0o600)
+      - name: Install Snowflake CLI
+        run: pip install snowflake-cli-labs
 
-          toml = f"""[connections.default]
-          account = "{os.environ['SF_ACCOUNT']}"
-          user = "{os.environ['SF_USER']}"
+      - name: Login to Snowflake registry
+        run: |
+          mkdir -p ~/.snowflake
+
+          echo "$SNOWFLAKE_PRIVATE_KEY" > ~/.snowflake/key.p8
+          chmod 600 ~/.snowflake/key.p8
+
+          cat > ~/.snowflake/connections.toml << 'EOF'
+          [default]
+          account = "sfsenorthamerica-jptelco_aws1"
+          user = "JPHILIP2"
           authenticator = "SNOWFLAKE_JWT"
           private_key_file = "~/.snowflake/key.p8"
           role = "SYSADMIN"
           warehouse = "COMPUTE_WH"
-          """
-          with open(os.path.expanduser("~/.snowflake/connections.toml"), "w") as f:
-              f.write(toml)
-          os.chmod(os.path.expanduser("~/.snowflake/connections.toml"), 0o600)
-          PYEOF
+          EOF
+          chmod 600 ~/.snowflake/connections.toml
 
           snow spcs image-registry login --connection default
         env:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
-          SF_ACCOUNT: sfsenorthamerica-jptelco_aws1
-          SF_USER: ${{ secrets.SF_USER }}
 
       - name: Build Docker image
-        run: |
-          docker build --platform linux/amd64 -t ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest .
+        run: docker build --platform linux/amd64 -t ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest .
 
       - name: Push to Snowflake registry
-        run: |
-          docker push ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest
+        run: docker push ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest
