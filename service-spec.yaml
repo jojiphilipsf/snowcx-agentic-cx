@@ -1,0 +1,24 @@
+spec:
+  containers:
+    - name: snowcx-react
+      image: /telecom_cx/data/telecom_cx_repo/snowcx-react:latest
+      env:
+        SNOWFLAKE_ACCOUNT: sfsenorthamerica-jptelco_aws1
+        SNOWFLAKE_DATABASE: TELECOM_CX
+        SNOWFLAKE_SCHEMA: DATA
+        SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+        SNOWFLAKE_ROLE: SYSADMIN
+      readinessProbe:
+        port: 8080
+        path: /
+      resources:
+        requests:
+          cpu: 0.5
+          memory: 1Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+  endpoints:
+    - name: app
+      port: 8080
+      public: true
