@@ -1,0 +1,72 @@
+name: Build & Deploy to SPCS
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: sfsenorthamerica-jptelco-aws1.registry.snowflakecomputing.com
+  IMAGE_PATH: /telecom_cx/data/telecom_cx_repo/snowcx-react
+  SNOWFLAKE_ACCOUNT: sfsenorthamerica-jptelco_aws1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js
+        run: npm run build
+
+      - name: Generate JWT for registry login
+        id: jwt
+        run: |
+          pip install pyjwt cryptography
+          python3 - <<'PYEOF'
+          import jwt, time, hashlib, base64, os
+          from cryptography.hazmat.primitives import serialization
+
+          key_pem = os.environ["SNOWFLAKE_PRIVATE_KEY"]
+          private_key = serialization.load_pem_private_key(key_pem.encode(), password=None)
+
+          pub_der = private_key.public_key().public_bytes(
+              serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+          )
+          fp = "SHA256:" + base64.b64encode(hashlib.sha256(pub_der).digest()).decode()
+
+          account = os.environ["SF_ACCOUNT_LOCATOR"]
+          user = os.environ["SF_USER"]
+          qualified = f"{account}.{user}"
+
+          token = jwt.encode(
+              {"iss": f"{qualified}.{fp}", "sub": qualified, "iat": int(time.time()), "exp": int(time.time()) + 3600},
+              private_key, algorithm="RS256"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"token={token}\n")
+          PYEOF
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SF_ACCOUNT_LOCATOR: ${{ secrets.SF_ACCOUNT_LOCATOR }}
+          SF_USER: ${{ secrets.SF_USER }}
+
+      - name: Login to Snowflake registry
+        run: |
+          echo "${{ steps.jwt.outputs.token }}" | docker login ${{ env.REGISTRY }} -u 0sessiontoken --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build --platform linux/amd64 -t ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest .
+
+      - name: Push to Snowflake registry
+        run: |
+          docker push ${{ env.REGISTRY }}${{ env.IMAGE_PATH }}:latest
