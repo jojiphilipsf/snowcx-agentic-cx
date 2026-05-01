@@ -7,6 +7,13 @@ import snowflake.connector
 
 conn = None
 
+def _read_spcs_token():
+    try:
+        with open("/snowflake/session/token") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
+
 def get_conn():
     global conn
     if conn:
@@ -16,13 +23,27 @@ def get_conn():
         except Exception:
             conn = None
     print("Connecting to Snowflake...")
-    conn = snowflake.connector.connect(
-        connection_name=os.getenv("SNOWFLAKE_CONNECTION_NAME", "sfsenorthamerica-jptelco_aws1")
-    )
-    conn.cursor().execute("USE ROLE SYSADMIN")
-    conn.cursor().execute("USE WAREHOUSE COMPUTE_WH")
-    conn.cursor().execute("USE SCHEMA TELECOM_CX.DATA")
-    print("Connected!")
+    spcs_token = _read_spcs_token()
+    sf_host = os.getenv("SNOWFLAKE_HOST", "")
+    if spcs_token and sf_host:
+        account = os.getenv("SNOWFLAKE_ACCOUNT", sf_host.split(".")[0])
+        conn = snowflake.connector.connect(
+            account=account,
+            host=sf_host,
+            token=spcs_token,
+            authenticator="oauth",
+            database=os.getenv("SNOWFLAKE_DATABASE", "TELECOM_CX"),
+            schema=os.getenv("SNOWFLAKE_SCHEMA", "DATA"),
+            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+        )
+        print(f"Connected via SPCS OAuth (host={sf_host})")
+    else:
+        conn_name = os.getenv("SNOWFLAKE_CONNECTION_NAME", "sfsenorthamerica-jptelco_aws1")
+        conn = snowflake.connector.connect(connection_name=conn_name)
+        conn.cursor().execute("USE ROLE SYSADMIN")
+        conn.cursor().execute("USE WAREHOUSE COMPUTE_WH")
+        conn.cursor().execute("USE SCHEMA TELECOM_CX.DATA")
+        print(f"Connected via named connection ({conn_name})")
     return conn
 
 class Handler(BaseHTTPRequestHandler):

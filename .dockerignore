@@ -1,0 +1,11 @@
+node_modules
+.git
+.gitignore
+*.md
+setup/
+.DS_Store
+snowflake.log
+start.py
+AGENTS.md
+CLAUDE.md
+.env*
